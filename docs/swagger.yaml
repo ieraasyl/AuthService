@@ -1,0 +1,310 @@
+basePath: /
+definitions:
+  handlers.HealthResponse:
+    properties:
+      services:
+        additionalProperties:
+          type: string
+        description: Individual service health (readiness only)
+        type: object
+      status:
+        description: 'Overall status: "ok" or "degraded"'
+        type: string
+      timestamp:
+        description: Current server time
+        type: string
+    type: object
+  services.TokenPair:
+    properties:
+      access_token:
+        description: JWT access token for API authentication
+        type: string
+      expires_at:
+        description: Access token expiration time
+        type: string
+      refresh_token:
+        description: JWT refresh token for token renewal
+        type: string
+    type: object
+  utils.ErrorResponse:
+    properties:
+      error:
+        description: HTTP status text (e.g., "Bad Request")
+        type: string
+      message:
+        description: Detailed error message
+        type: string
+      request_id:
+        description: Request ID for distributed tracing
+        type: string
+    type: object
+host: localhost:8080
+info:
+  contact:
+    email: ieraasyl@example.com
+    name: API Support
+  description: |-
+    Production-ready authentication service with Google OAuth 2.0, JWT tokens, and session management.
+    Features: Multi-device sessions, token blacklisting, rate limiting, geolocation tracking.
+  license:
+    name: MIT
+    url: https://github.com/ieraasyl/AuthService/blob/main/LICENSE
+  title: AuthService Authentication Service API
+  version: "1.0"
+paths:
+  /api/v1/auth/google/callback:
+    get:
+      description: Handles callback from Google OAuth. Exchanges code for user info
+        and creates session.
+      parameters:
+      - description: OAuth state (CSRF protection)
+        in: query
+        name: state
+        required: true
+        type: string
+      - description: Authorization code from Google
+        in: query
+        name: code
+        required: true
+        type: string
+      produces:
+      - text/html
+      responses:
+        "303":
+          description: Redirect to frontend
+          schema:
+            type: string
+        "400":
+          description: Invalid state or missing code
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+        "401":
+          description: Authentication failed
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+      summary: Google OAuth callback
+      tags:
+      - auth
+  /api/v1/auth/google/login:
+    get:
+      description: Redirects to Google OAuth consent screen. Sets state cookie for
+        CSRF protection.
+      produces:
+      - text/html
+      responses:
+        "307":
+          description: Redirect to Google OAuth
+          schema:
+            type: string
+      summary: Initiate Google OAuth login
+      tags:
+      - auth
+  /api/v1/auth/logout:
+    post:
+      consumes:
+      - application/json
+      description: Revokes all tokens and sessions. Clears authentication cookies.
+        Logs out from all devices.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Logged out successfully
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - CookieAuth: []
+      summary: Logout user
+      tags:
+      - auth
+  /api/v1/auth/me:
+    get:
+      description: Returns authenticated user's information from JWT claims
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: User profile
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized or invalid token
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+        "500":
+          description: Failed to fetch user
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+      security:
+      - CookieAuth: []
+      summary: Get current user profile
+      tags:
+      - auth
+  /api/v1/auth/refresh:
+    post:
+      consumes:
+      - application/json
+      description: Generates new access and refresh tokens using a valid refresh token.
+        Implements token rotation.
+      parameters:
+      - description: Refresh token (optional if in cookie)
+        in: body
+        name: body
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: New token pair
+          schema:
+            $ref: '#/definitions/services.TokenPair'
+        "400":
+          description: Invalid request or missing token
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+        "401":
+          description: Invalid or expired refresh token
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+      summary: Refresh access token
+      tags:
+      - auth
+  /api/v1/auth/sessions:
+    get:
+      description: Returns all active sessions for the authenticated user with device
+        and location info
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of sessions
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+        "500":
+          description: Failed to list sessions
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+      security:
+      - CookieAuth: []
+      summary: List active sessions
+      tags:
+      - auth
+  /api/v1/auth/sessions/{id}:
+    delete:
+      description: Logs out a specific device/session by session ID
+      parameters:
+      - description: Session ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Session revoked
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Missing session ID
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+        "500":
+          description: Failed to revoke session
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+      security:
+      - CookieAuth: []
+      summary: Revoke a session
+      tags:
+      - auth
+  /api/v1/auth/sessions/revoke-others:
+    post:
+      description: Logs out all devices except the current one
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Sessions revoked
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Current session not found
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+        "500":
+          description: Failed to revoke sessions
+          schema:
+            $ref: '#/definitions/utils.ErrorResponse'
+      security:
+      - CookieAuth: []
+      summary: Revoke all other sessions
+      tags:
+      - auth
+  /health:
+    get:
+      description: Returns 200 OK if the service is running. Does not check dependencies.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Service is alive
+          schema:
+            $ref: '#/definitions/handlers.HealthResponse'
+      summary: Health check (liveness probe)
+      tags:
+      - health
+  /ready:
+    get:
+      description: Checks if the service and all dependencies (PostgreSQL, Redis)
+        are healthy
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: All services healthy
+          schema:
+            $ref: '#/definitions/handlers.HealthResponse'
+        "503":
+          description: One or more services unhealthy
+          schema:
+            $ref: '#/definitions/handlers.HealthResponse'
+      summary: Readiness check
+      tags:
+      - health
+securityDefinitions:
+  BearerAuth:
+    description: Type "Bearer" followed by a space and JWT token.
+    in: header
+    name: Authorization
+    type: apiKey
+  CookieAuth:
+    description: JWT access token stored in HttpOnly cookie
+    in: cookie
+    name: access_token
+    type: apiKey
+swagger: "2.0"
