@@ -2,6 +2,10 @@
 
 Production-ready authentication service with Google OAuth 2.0, JWT access/refresh tokens (with rotation), multi-device session management on Redis, PostgreSQL persistence, Prometheus metrics, structured logging, rate limiting, and Swagger API docs.
 
+## Demo project
+
+- EmojiHub: https://github.com/ieraasyl/EmojiHub
+
 ## Features
 
 - Google OAuth 2.0 login (profile + email scopes)
